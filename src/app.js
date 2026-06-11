@@ -824,19 +824,23 @@ function isNewerVersion(remote, local) {
   return false;
 }
 
-async function checkForUpdate() {
-  if (!UPDATE_REPO) return;   // not configured yet
+// Checks GitHub Releases for a newer version. Returns one of:
+//   'disabled' | 'update' | 'current' | 'error'
+// `notify` shows a toast when an update is found (used by the silent startup check;
+// the manual check in the About dialog passes notify:false and shows inline feedback).
+async function checkForUpdate({ notify = true } = {}) {
+  if (!UPDATE_REPO) return 'disabled';
   try {
     const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
       headers: { 'Accept': 'application/vnd.github+json' },
     });
-    if (!res.ok) return;
+    if (!res.ok) return 'error';
     const rel = await res.json();
     const latest = rel.tag_name || rel.name;
-    if (!latest) return;
+    if (!latest) return 'error';
 
     const current = await window.electronAPI.getAppVersion();
-    if (!isNewerVersion(latest, current)) return;
+    if (!isNewerVersion(latest, current)) return 'current';
 
     // Prefer a Windows installer asset; fall back to the release page.
     const asset = (rel.assets || []).find(a => /\.exe$/i.test(a.name || ''));
@@ -847,9 +851,11 @@ async function checkForUpdate() {
     };
 
     document.getElementById('aboutBtn')?.classList.add('has-update');
-    showToast(`Update available: v${updateInfo.version} — see About (ⓘ)`, 'success');
+    if (notify) showToast(`Update available: v${updateInfo.version} — see About (ⓘ)`, 'success');
+    return 'update';
   } catch (e) {
-    // Silent — a failed update check must never disrupt the app.
+    // Network/parse failure — never disrupt the app.
+    return 'error';
   }
 }
 
@@ -867,24 +873,48 @@ async function showAboutModal() {
       <div style="font-size:12px;color:rgba(232,232,240,0.45);line-height:1.6;margin-bottom:22px">
         A Subtitle sync tool powered by anchor-sub-sync and Whisper.<br><br>WiseTech Global<br>© 2026. All rights reserved.
       </div>
-      ${updateInfo ? `
-      <div style="background:var(--accent-dim);border:1px solid rgba(234,252,136,0.3);border-radius:8px;padding:12px 14px;margin-bottom:18px">
-        <div style="font-size:13px;font-weight:600;color:#EAFC88;margin-bottom:8px">Update available — v${updateInfo.version}</div>
-        <button id="aboutDownload" style="padding:8px 18px;background:#EAFC88;border:none;border-radius:8px;color:#141400;font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer">Download v${updateInfo.version}</button>
-      </div>` : ''}
+      <div id="aboutUpdate" style="margin-bottom:18px"></div>
       <button id="aboutClose" style="padding:9px 24px;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:rgba(232,232,240,0.7);font-family:'Sora',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Close</button>
     </div>`;
   document.body.appendChild(overlay);
 
   const close = () => overlay.remove();
   overlay.querySelector('#aboutClose').onclick = close;
-  overlay.querySelector('#aboutDownload')?.addEventListener('click', () => {
-    if (updateInfo?.url) window.electronAPI.openExternal(updateInfo.url);
-  });
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', function esc(e) {
     if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
   });
+
+  // Renders the update section based on current state, and (re)wires its buttons.
+  const section = overlay.querySelector('#aboutUpdate');
+  const btnBase = "padding:8px 18px;border-radius:8px;font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;";
+  function paintUpdate(statusMsg = '') {
+    if (updateInfo) {
+      section.innerHTML = `
+        <div style="background:var(--accent-dim);border:1px solid rgba(234,252,136,0.3);border-radius:8px;padding:12px 14px">
+          <div style="font-size:13px;font-weight:600;color:#EAFC88;margin-bottom:8px">Update available — v${updateInfo.version}</div>
+          <button id="aboutDownload" style="${btnBase}background:#EAFC88;border:none;color:#141400">Download v${updateInfo.version}</button>
+        </div>`;
+      section.querySelector('#aboutDownload').onclick = () => {
+        if (updateInfo?.url) window.electronAPI.openExternal(updateInfo.url);
+      };
+    } else {
+      section.innerHTML = `
+        <button id="aboutCheck" style="${btnBase}background:transparent;border:1px solid rgba(255,255,255,0.15);color:rgba(232,232,240,0.7);font-weight:600">Check for updates</button>
+        <div id="aboutCheckStatus" style="font-size:11px;color:rgba(232,232,240,0.45);margin-top:8px;min-height:14px">${statusMsg}</div>`;
+      section.querySelector('#aboutCheck').onclick = async () => {
+        const btn = section.querySelector('#aboutCheck');
+        const status = section.querySelector('#aboutCheckStatus');
+        btn.disabled = true; btn.style.opacity = '0.5'; status.textContent = 'Checking…';
+        const result = await checkForUpdate({ notify: false });
+        if (result === 'update')        paintUpdate();   // updateInfo now set → shows banner
+        else if (result === 'current')  paintUpdate(`You're on the latest version (v${version}).`);
+        else if (result === 'disabled') paintUpdate('Update checking is not configured.');
+        else                            paintUpdate("Couldn't reach the update server. Try again later.");
+      };
+    }
+  }
+  paintUpdate();
 }
 
 // ── Model download modal ───────────────────────────────────────────────────

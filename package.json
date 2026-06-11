@@ -1,6 +1,6 @@
 {
   "name": "subsync",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Subtitle sync tool powered by anchor-sub-sync and Whisper",
   "main": "main.js",
   "author": "WiseTech eLearning Team",
