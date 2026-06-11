@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SubSync — Error</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;600;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg:#0f0f13; --surface:#16161d; --border:rgba(255,255,255,0.08); --accent:#EAFC88; --text:#e8e8f0; --muted:rgba(232,232,240,0.5); --danger:#ff5f5f; }
+  html, body { height:100%; background:var(--bg); color:var(--text); font-family:'Sora',sans-serif; -webkit-app-region:drag; }
+  .wrap { height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; gap:18px; max-width:560px; margin:0 auto; }
+  .icon { font-size:36px; opacity:0.35; }
+  h1 { font-size:20px; font-weight:700; }
+  p { font-size:13px; color:var(--muted); line-height:1.7; text-align:center; }
+  .card { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px 22px; display:flex; flex-direction:column; gap:10px; }
+  .row { display:flex; gap:10px; align-items:flex-start; }
+  .num { width:22px; height:22px; border-radius:50%; background:var(--accent); color:#141400; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+  .row-text { font-size:12px; color:var(--muted); line-height:1.6; }
+  code { font-family:'DM Mono',monospace; background:rgba(255,255,255,0.06); padding:1px 6px; border-radius:3px; color:var(--text); font-size:11px; -webkit-app-region:no-drag; user-select:text; }
+  .note { font-size:11px; color:var(--danger); opacity:0.85; text-align:center; }
+  .btn-row { display:flex; gap:10px; }
+  .retry-btn { padding:9px 22px; background:var(--accent); color:#141400; border:none; border-radius:8px; font-family:'Sora',sans-serif; font-size:13px; font-weight:700; cursor:pointer; -webkit-app-region:no-drag; }
+  .retry-btn:hover { background:#f5ff99; }
+  .diag-btn { padding:9px 16px; background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:8px; font-family:'Sora',sans-serif; font-size:13px; cursor:pointer; -webkit-app-region:no-drag; }
+  .diag-btn:hover { border-color:rgba(255,255,255,0.2); color:var(--text); }
+  .tag { display:inline-block; font-size:10px; padding:1px 7px; border-radius:10px; font-weight:600; margin-left:6px; background:rgba(255,95,95,0.12); color:var(--danger); vertical-align:middle; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="icon">⚓</div>
+  <h1 id="title">Backend failed to start</h1>
+  <p id="desc">SubSync's Python engine didn't respond. This is a developer setup issue — end users receive a packaged installer where everything is bundled.</p>
+
+  <div class="card" id="steps-no-venv">
+    <div class="row">
+      <div class="num">1</div>
+      <div class="row-text">Open a terminal in the <code>subsync-app</code> folder.</div>
+    </div>
+    <div class="row">
+      <div class="num">2</div>
+      <div class="row-text">Run <code>scripts\setup-dev.bat</code> and wait for it to complete successfully.</div>
+    </div>
+    <div class="row">
+      <div class="num">3</div>
+      <div class="row-text">Run <code>npm start</code> to relaunch.</div>
+    </div>
+  </div>
+
+  <div class="card" id="steps-crash" style="display:none">
+    <div class="row">
+      <div class="num">1</div>
+      <div class="row-text">The venv exists but the server crashed on startup. Run <code>scripts\diagnose.bat</code> to see the exact error.</div>
+    </div>
+    <div class="row">
+      <div class="num">2</div>
+      <div class="row-text">Common cause: <code>openai-whisper</code> failed to install. Requires <strong>Visual C++ Build Tools</strong> — download free from <code>visualstudio.microsoft.com/visual-cpp-build-tools</code>.</div>
+    </div>
+    <div class="row">
+      <div class="num">3</div>
+      <div class="row-text">After fixing, re-run <code>scripts\setup-dev.bat</code> then <code>npm start</code>.</div>
+    </div>
+  </div>
+
+  <p class="note" id="note">End users never see this — they use the .exe installer which bundles everything.</p>
+
+  <div class="btn-row">
+    <button class="retry-btn" onclick="location.reload()">Retry</button>
+    <button class="diag-btn" onclick="openDiag()">Open diagnose.bat</button>
+  </div>
+</div>
+<script>
+  // Read reason from query string set by main.js
+  const params = new URLSearchParams(window.location.search);
+  const reason = params.get('reason') || 'no-venv';
+  if (reason === 'crash') {
+    document.getElementById('steps-no-venv').style.display = 'none';
+    document.getElementById('steps-crash').style.display = 'flex';
+    document.getElementById('steps-crash').style.flexDirection = 'column';
+    document.getElementById('steps-crash').style.gap = '10px';
+    document.getElementById('title').textContent = 'Backend crashed on startup';
+    document.getElementById('desc').textContent = "The Python venv exists but server.py failed to start. Run diagnose.bat to see the exact error.";
+  }
+  function openDiag() {
+    if (window.electronAPI && window.electronAPI.openDiagnose) {
+      window.electronAPI.openDiagnose();
+    } else {
+      alert('Open a terminal and run: scripts\\diagnose.bat');
+    }
+  }
+</script>
+</body>
+</html>

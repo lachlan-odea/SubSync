@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SubSync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Sora:wght@400;500;600;700&display=swap">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #0f0f13;
+  --surface:    #16161d;
+  --surface2:   #1c1c25;
+  --border:     rgba(255,255,255,0.07);
+  --border2:    rgba(255,255,255,0.12);
+  --accent:     #EAFC88;
+  --accent-dim: rgba(234,252,136,0.12);
+  --accent-text:#141400;
+  --blue:       #371EE1;
+  --blue-dim:   rgba(55,30,225,0.18);
+  --text:       #e8e8f0;
+  --muted:      rgba(232,232,240,0.5);
+  --danger:     #ff5f5f;
+  --success:    #5fff9a;
+  --radius:     8px;
+}
+
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:'Sora',sans-serif; font-size:14px; line-height:1.5; overflow:hidden; }
+
+/* ── Titlebar ── */
+/* padding-right leaves room for the Windows titleBarOverlay controls (min/max/close)
+   which render on top of this region. env(titlebar-area-width) is set by Electron. */
+.titlebar { height:36px; display:flex; align-items:center; padding:0 16px; gap:12px; padding-right:calc(100vw - env(titlebar-area-width, calc(100vw - 150px)) + 8px); background:var(--bg); border-bottom:1px solid var(--border); -webkit-app-region:drag; flex-shrink:0; }
+.titlebar * { -webkit-app-region:no-drag; }
+.tb-logo { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:700; letter-spacing:-0.02em; }
+.tb-logo .accent { color:var(--accent); }
+.tb-logo svg { width:18px; height:18px; }
+.tb-spacer { flex:1; }
+.tb-about-btn { position:relative; display:flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; background:transparent; border:none; border-radius:6px; color:var(--muted); cursor:pointer; transition:all 0.12s; }
+.tb-about-btn:hover { background:var(--surface2); color:var(--accent); }
+.tb-about-btn svg { width:16px; height:16px; }
+.tb-about-btn.has-update::after { content:''; position:absolute; top:1px; right:1px; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 1.5px var(--bg); }
+
+/* ── Layout ── */
+.app-body { display:flex; height:calc(100vh - 36px); overflow:hidden; }
+
+/* ── Sidebar ── */
+.sidebar { width:280px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.sidebar-section { padding:14px 14px 10px; border-bottom:1px solid var(--border); }
+.section-label { font-size:10px; font-weight:600; letter-spacing:0.1em; color:var(--muted); text-transform:uppercase; margin-bottom:10px; }
+
+.drop-zone { border:1px dashed var(--border2); border-radius:var(--radius); padding:14px; text-align:center; cursor:pointer; transition:all 0.2s; margin-bottom:8px; }
+.drop-zone:hover, .drop-zone.drag-over { border-color:var(--accent); background:var(--accent-dim); }
+.drop-zone .dz-icon { font-size:20px; margin-bottom:6px; opacity:0.5; }
+.drop-zone .dz-title { font-size:12px; font-weight:600; color:var(--text); margin-bottom:2px; }
+.drop-zone .dz-sub { font-size:11px; color:var(--muted); }
+.drop-zone.has-file { border-color:rgba(234,252,136,0.3); background:var(--accent-dim); }
+.drop-zone.has-file .dz-title { color:var(--accent); }
+.file-name { font-size:11px; font-family:'DM Mono',monospace; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 2px; min-height:18px; line-height:1.6; }
+
+.mode-tab { flex:1; padding:5px 8px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--muted); font-family:'Sora',sans-serif; font-size:11px; font-weight:600; cursor:pointer; transition:all 0.12s; }
+.mode-tab.active { background:var(--accent-dim); border-color:rgba(234,252,136,0.3); color:var(--accent); }
+.mode-tab:hover:not(.active) { border-color:var(--border2); color:var(--text); }
+
+.model-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:4px; }
+.model-card { border:1px solid var(--border); border-radius:var(--radius); padding:8px 10px; cursor:pointer; transition:all 0.15s; background:var(--surface2); }
+.model-card:hover { border-color:var(--border2); }
+.model-card.selected { border-color:var(--accent); background:var(--accent-dim); }
+.model-card .mc-name { font-size:12px; font-weight:600; margin-bottom:2px; }
+.model-card.selected .mc-name { color:var(--accent); }
+.model-card .mc-desc { font-size:10px; color:var(--muted); line-height:1.4; }
+
+.run-btn { margin:12px 14px; padding:12px; background:var(--accent); color:var(--accent-text); border:none; border-radius:var(--radius); font-family:'Sora',sans-serif; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; justify-content:center; gap:8px; }
+.run-btn:hover { background:#f5ff99; transform:translateY(-1px); }
+.run-btn:disabled { background:var(--surface2); color:var(--muted); cursor:not-allowed; transform:none; border:1px solid var(--border); }
+
+.progress-section { padding:0 14px 14px; border-bottom:1px solid var(--border); }
+.prog-track { height:3px; background:var(--border); border-radius:2px; overflow:hidden; margin-bottom:8px; }
+.prog-fill { height:100%; background:var(--accent); border-radius:2px; width:0%; transition:width 0.4s ease; }
+.prog-label { font-size:11px; font-family:'DM Mono',monospace; color:var(--muted); min-height:14px; }
+
+.offset-section { padding:14px; border-bottom:1px solid var(--border); }
+.offset-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.offset-input { width:80px; padding:6px 8px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:'DM Mono',monospace; font-size:13px; text-align:right; }
+.offset-input:focus { outline:none; border-color:var(--accent); }
+.offset-unit { font-size:12px; color:var(--muted); font-family:'DM Mono',monospace; }
+.nudge-btns { display:flex; gap:4px; margin-top:8px; }
+.nudge-btn { flex:1; padding:5px 4px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--muted); font-family:'DM Mono',monospace; font-size:11px; cursor:pointer; transition:all 0.12s; }
+.nudge-btn:hover { border-color:var(--accent); color:var(--accent); }
+.apply-offset-btn { width:100%; margin-top:8px; padding:7px; background:var(--blue-dim); border:1px solid rgba(55,30,225,0.4); border-radius:var(--radius); color:#a0a8ff; font-family:'Sora',sans-serif; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+.apply-offset-btn:hover { background:rgba(55,30,225,0.28); }
+
+.export-section { padding:14px; margin-top:auto; border-top:1px solid var(--border); }
+.export-btn { width:100%; padding:9px; background:transparent; border:1px solid var(--border2); border-radius:var(--radius); color:var(--text); font-family:'Sora',sans-serif; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:6px; }
+.export-btn:hover { border-color:var(--accent); color:var(--accent); }
+.export-btn:disabled { opacity:0.35; cursor:not-allowed; }
+.export-btn:last-child { margin-bottom:0; }
+
+/* ── Main panel ── */
+.main-panel { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+
+/* ── Video ── */
+.video-panel { background:#000; position:relative; flex-shrink:0; height:260px; display:flex; align-items:center; justify-content:center; }
+
+/* Drag handle to resize the video panel */
+.video-resize-handle { height:6px; background:var(--bg); border-top:1px solid var(--border); border-bottom:1px solid var(--border); cursor:ns-resize; flex-shrink:0; position:relative; transition:background 0.12s; }
+.video-resize-handle::after { content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:28px; height:2px; background:var(--border2); border-radius:1px; transition:background 0.12s; }
+.video-resize-handle:hover, .video-resize-handle.dragging { background:var(--accent-dim); }
+.video-resize-handle:hover::after, .video-resize-handle.dragging::after { background:var(--accent); }
+video { width:100%; height:100%; object-fit:contain; display:none; }
+.no-video-msg { display:flex; flex-direction:column; align-items:center; gap:8px; color:rgba(255,255,255,0.2); font-size:13px; }
+.sub-overlay { position:absolute; bottom:52px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.82); color:#fff; padding:6px 18px 9px; border-radius:4px; font-size:15px; font-family:'Sora',sans-serif; white-space:pre-wrap; max-width:85%; text-align:center; pointer-events:none; display:none; line-height:1.55; text-shadow:0 1px 3px rgba(0,0,0,0.8); }
+
+/* ── Custom video controls ── */
+.video-controls-bar {
+  position:absolute; bottom:0; left:0; right:0;
+  background:linear-gradient(transparent, rgba(0,0,0,0.85));
+  padding:6px 12px 8px;
+  display:none;
+  flex-direction:column;
+  gap:6px;
+}
+.video-panel:hover .video-controls-bar,
+.video-controls-bar.always-show { display:flex; }
+.video-panel.no-video .video-controls-bar { display:none !important; }
+
+/* Scrubber */
+.scrubber-wrap { position:relative; height:14px; display:flex; align-items:center; cursor:pointer; }
+.scrubber-track { position:absolute; left:0; right:0; height:3px; background:rgba(255,255,255,0.2); border-radius:2px; overflow:hidden; }
+.scrubber-buf  { position:absolute; left:0; height:100%; background:rgba(255,255,255,0.15); border-radius:2px; width:0%; }
+.scrubber-fill { position:absolute; left:0; height:100%; background:var(--accent); border-radius:2px; width:0%; }
+.scrubber-thumb { position:absolute; width:11px; height:11px; background:var(--accent); border-radius:50%; top:50%; transform:translate(-50%,-50%); left:0%; pointer-events:none; box-shadow:0 0 4px rgba(0,0,0,0.5); opacity:0; transition:opacity 0.15s; }
+.scrubber-wrap:hover .scrubber-thumb { opacity:1; }
+
+/* Control row */
+.ctrl-row { display:flex; align-items:center; gap:10px; }
+.ctrl-btn { background:none; border:none; color:rgba(255,255,255,0.85); cursor:pointer; padding:2px; display:flex; align-items:center; justify-content:center; border-radius:4px; transition:color 0.12s; flex-shrink:0; }
+.ctrl-btn:hover { color:#fff; }
+.ctrl-btn svg { width:18px; height:18px; }
+.ctrl-btn.sm svg { width:14px; height:14px; }
+
+.time-display { font-family:'DM Mono',monospace; font-size:11px; color:rgba(255,255,255,0.7); white-space:nowrap; min-width:130px; }
+.ctrl-spacer { flex:1; }
+
+/* Volume */
+.vol-wrap { display:flex; align-items:center; gap:6px; }
+.vol-slider { -webkit-appearance:none; appearance:none; width:64px; height:3px; background:rgba(255,255,255,0.25); border-radius:2px; outline:none; cursor:pointer; }
+.vol-slider::-webkit-slider-thumb { -webkit-appearance:none; width:11px; height:11px; border-radius:50%; background:var(--accent); cursor:pointer; }
+
+/* Speed */
+.speed-btn { font-family:'DM Mono',monospace; font-size:10px; color:rgba(255,255,255,0.6); background:rgba(255,255,255,0.08); border:none; border-radius:4px; padding:2px 6px; cursor:pointer; transition:all 0.12s; }
+.speed-btn:hover { background:rgba(255,255,255,0.15); color:#fff; }
+.speed-btn.active { background:var(--accent-dim); color:var(--accent); }
+
+/* Info bar above timeline */
+.video-info-bar { display:flex; align-items:center; gap:10px; padding:6px 14px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+.time-code { font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); }
+.active-cue-badge { font-size:11px; font-family:'DM Mono',monospace; padding:2px 8px; border-radius:20px; background:var(--accent-dim); color:var(--accent); border:1px solid rgba(234,252,136,0.2); display:none; }
+
+/* Timeline */
+.timeline-header { display:flex; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border); background:var(--surface); gap:10px; flex-shrink:0; }
+.timeline-search { flex:1; padding:5px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:'DM Mono',monospace; font-size:12px; }
+.timeline-search::placeholder { color:var(--muted); }
+.timeline-search:focus { outline:none; border-color:var(--border2); }
+.tl-action-btn { padding:5px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--muted); font-family:'Sora',sans-serif; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; transition:all 0.12s; }
+.tl-action-btn:hover { border-color:var(--border2); color:var(--text); }
+
+.timeline { flex:1; overflow-y:auto; background:var(--bg); }
+.timeline::-webkit-scrollbar { width:4px; }
+.timeline::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+.cue-row { display:grid; grid-template-columns:44px 160px 1fr 36px; align-items:start; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.1s; min-height:52px; }
+.cue-row:hover { background:var(--surface); }
+.cue-row.active { background:var(--accent-dim); border-left:2px solid var(--accent); }
+.cue-num { padding:14px 8px; font-size:10px; font-family:'DM Mono',monospace; color:var(--muted); text-align:right; border-right:1px solid var(--border); align-self:stretch; display:flex; align-items:flex-start; padding-top:16px; justify-content:flex-end; }
+.cue-time { padding:12px; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); border-right:1px solid var(--border); line-height:1.7; align-self:stretch; }
+.cue-time .start { color:var(--text); font-size:11px; }
+.cue-text { padding:12px 14px; font-size:13px; line-height:1.55; color:var(--text); word-break:break-word; }
+.cue-row.active .cue-text { color:var(--accent); }
+.cue-del { padding:12px 6px; display:flex; align-items:flex-start; padding-top:14px; }
+.del-btn { width:24px; height:24px; border:none; background:none; color:rgba(255,255,255,0.2); font-size:14px; cursor:pointer; border-radius:4px; display:flex; align-items:center; justify-content:center; transition:all 0.12s; line-height:1; }
+.del-btn:hover { background:rgba(255,95,95,0.15); color:var(--danger); }
+
+.timeline-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; height:200px; color:rgba(255,255,255,0.15); font-size:13px; }
+
+/* ── Right edit panel ── */
+.edit-panel { width:268px; flex-shrink:0; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; }
+.edit-panel::-webkit-scrollbar { width:4px; }
+.edit-panel::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+.ep-section { padding:14px; border-bottom:1px solid var(--border); }
+.field-label { font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+.field-input { width:100%; padding:6px 8px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:'DM Mono',monospace; font-size:12px; margin-bottom:10px; }
+.field-input:focus { outline:none; border-color:var(--accent); }
+.field-textarea { width:100%; padding:7px 9px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:'Sora',sans-serif; font-size:13px; resize:vertical; min-height:72px; line-height:1.5; }
+.field-textarea:focus { outline:none; border-color:var(--accent); }
+.cue-nudge-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:6px; }
+.cue-nudge-btn { padding:5px 4px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); color:var(--muted); font-family:'DM Mono',monospace; font-size:10px; cursor:pointer; transition:all 0.12s; }
+.cue-nudge-btn:hover { border-color:var(--accent); color:var(--accent); }
+.save-cue-btn { width:100%; padding:8px; margin-top:10px; background:var(--accent); color:var(--accent-text); border:none; border-radius:var(--radius); font-family:'Sora',sans-serif; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.15s; }
+.save-cue-btn:hover { background:#f5ff99; }
+.stats-grid { display:flex; flex-direction:column; gap:8px; }
+.stat-row { display:flex; justify-content:space-between; align-items:baseline; }
+.stat-key { font-size:11px; color:var(--muted); }
+.stat-val { font-size:12px; font-family:'DM Mono',monospace; color:var(--text); }
+.ep-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:30px 20px; color:rgba(255,255,255,0.15); font-size:12px; text-align:center; }
+
+/* ── Toast ── */
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius); padding:10px 18px; font-size:13px; opacity:0; transition:all 0.25s; pointer-events:none; z-index:999; white-space:nowrap; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast.success { border-color:rgba(95,255,154,0.3); color:var(--success); }
+.toast.error { border-color:rgba(255,95,95,0.3); color:var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="tb-logo">
+    <svg viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="4" r="2" stroke="#EAFC88" stroke-width="1.5"/>
+      <line x1="9" y1="6" x2="9" y2="16" stroke="#EAFC88" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M4 9 Q2 9 2 12 Q2 16 5.5 16" stroke="#EAFC88" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+      <path d="M14 9 Q16 9 16 12 Q16 16 12.5 16" stroke="#EAFC88" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+      <line x1="4" y1="9" x2="14" y2="9" stroke="#EAFC88" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    Sub<span class="accent">Sync</span>
+  </div>
+  <div class="tb-spacer"></div>
+  <button class="tb-about-btn" id="aboutBtn" title="About SubSync">
+    <svg viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.4"/>
+      <circle cx="8" cy="5" r="0.9" fill="currentColor"/>
+      <line x1="8" y1="7.4" x2="8" y2="11.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+  </button>
+</div>
+
+<div class="app-body">
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="section-label">Files</div>
+      <div class="drop-zone" id="videoDropZone">
+        <div class="dz-icon">▶</div>
+        <div class="dz-title">Video file</div>
+        <div class="dz-sub">.mp4 .mov .mkv .avi</div>
+      </div>
+      <div class="file-name" id="videoFileName">no file selected</div>
+      <br>
+      <div style="display:flex;gap:6px;margin-bottom:4px">
+        <button class="mode-tab active" id="tabDocx" onclick="setInputMode('docx')">Word doc</button>
+        <button class="mode-tab"        id="tabSrt"  onclick="setInputMode('srt')">SRT / VTT</button>
+      </div>
+      <div id="docxZoneWrap">
+        <div class="drop-zone" id="docxDropZone">
+          <div class="dz-icon">W</div>
+          <div class="dz-title">Word document</div>
+          <div class="dz-sub">.docx transcript</div>
+        </div>
+        <div class="file-name" id="docxFileName">no file selected</div>
+        <div style="margin-top:8px">
+          <div class="field-label" style="margin-bottom:4px">Max words per cue</div>
+          <input type="number" class="offset-input" id="maxWordsInput" value="20" min="3" max="36" style="width:60px">
+          <span class="offset-unit" style="margin-left:4px">words</span>
+        </div>
+      </div>
+      <div id="srtZoneWrap" style="display:none">
+        <div class="drop-zone" id="srtDropZone">
+          <div class="dz-icon">≡</div>
+          <div class="dz-title">Subtitle file</div>
+          <div class="dz-sub">.srt .vtt</div>
+        </div>
+        <div class="file-name" id="srtFileName">no file selected</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">Whisper model</div>
+      <div class="model-grid">
+        <div class="model-card" data-model="tiny">
+          <div class="mc-name">Tiny</div>
+          <div class="mc-desc">Fastest, lower accuracy</div>
+        </div>
+        <div class="model-card selected" data-model="small">
+          <div class="mc-name">Small</div>
+          <div class="mc-desc">Balanced — recommended</div>
+        </div>
+        <div class="model-card" data-model="medium">
+          <div class="mc-name">Medium</div>
+          <div class="mc-desc">High accuracy, slower</div>
+        </div>
+        <div class="model-card" data-model="large">
+          <div class="mc-name">Large</div>
+          <div class="mc-desc">Best quality, needs GPU</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="run-btn" id="runBtn" disabled>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M3 2l9 5-9 5V2z"/></svg>
+      AI Auto-Sync
+    </button>
+
+    <div class="progress-section">
+      <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+      <div class="prog-label" id="progLabel">Ready</div>
+    </div>
+
+    <div class="offset-section">
+      <div class="section-label">Manual offset</div>
+      <div class="offset-row">
+        <input type="number" class="offset-input" id="offsetInput" value="0" step="0.1">
+        <span class="offset-unit">sec</span>
+      </div>
+      <div class="nudge-btns">
+        <button class="nudge-btn" id="nudge-5">−5s</button>
+        <button class="nudge-btn" id="nudge-1">−1s</button>
+        <button class="nudge-btn" id="nudge+1">+1s</button>
+        <button class="nudge-btn" id="nudge+5">+5s</button>
+      </div>
+      <button class="apply-offset-btn" id="applyOffsetBtn">Apply offset to all cues</button>
+    </div>
+
+    <div class="export-section">
+      <button class="export-btn" id="manageModelsBtn">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="2"/><path d="M6.5 1v1.5M6.5 10v1.5M1 6.5h1.5M10 6.5h1.5"/></svg>
+        Manage Whisper models
+      </button>
+      <button class="export-btn" id="exportBtn" disabled>
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor"><path d="M6.5 1v7M3.5 5.5L6.5 8l3-2.5M2 10h9"/></svg>
+        Export synced subtitles
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Main panel ── -->
+  <div class="main-panel">
+
+    <!-- Video -->
+    <div class="video-panel no-video" id="videoPanel">
+      <div class="no-video-msg" id="noVideoMsg">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="10" width="30" height="28" rx="3" stroke="white" stroke-width="2"/>
+          <path d="M34 19l10-6v22l-10-6V19z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        Load a video file to preview
+      </div>
+      <video id="videoEl"></video>
+      <div class="sub-overlay" id="subOverlay"></div>
+
+      <!-- Custom controls overlay -->
+      <div class="video-controls-bar" id="videoControlsBar">
+        <!-- Scrubber -->
+        <div class="scrubber-wrap" id="scrubberWrap">
+          <div class="scrubber-track">
+            <div class="scrubber-buf"  id="scrubberBuf"></div>
+            <div class="scrubber-fill" id="scrubberFill"></div>
+          </div>
+          <div class="scrubber-thumb" id="scrubberThumb"></div>
+        </div>
+        <!-- Buttons row -->
+        <div class="ctrl-row">
+          <!-- Play/Pause -->
+          <button class="ctrl-btn" id="playBtn" title="Play / Pause (Space)">
+            <svg id="playIcon" viewBox="0 0 20 20" fill="currentColor"><path d="M6 4l12 6-12 6V4z"/></svg>
+            <svg id="pauseIcon" viewBox="0 0 20 20" fill="currentColor" style="display:none"><rect x="5" y="4" width="4" height="12" rx="1"/><rect x="11" y="4" width="4" height="12" rx="1"/></svg>
+          </button>
+          <!-- Skip back 5s -->
+          <button class="ctrl-btn sm" id="skipBackBtn" title="Skip back 5s">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 4V1L5 5l5 4V6a6 6 0 110 12 6 6 0 01-5.2-9H7.9A4 4 0 1010 6z"/><text x="7" y="14" font-size="5" fill="currentColor" font-family="monospace">5</text></svg>
+          </button>
+          <!-- Skip forward 5s -->
+          <button class="ctrl-btn sm" id="skipFwdBtn" title="Skip forward 5s">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 4V1l5 4-5 4V6a6 6 0 100 12 6 6 0 005.2-9H12.1A4 4 0 1110 6z"/><text x="8" y="14" font-size="5" fill="currentColor" font-family="monospace">5</text></svg>
+          </button>
+          <!-- Time display -->
+          <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+          <div class="ctrl-spacer"></div>
+          <!-- Playback speed -->
+          <button class="speed-btn active" data-speed="1"   id="spd1x">1×</button>
+          <button class="speed-btn"        data-speed="1.5" id="spd15">1.5×</button>
+          <button class="speed-btn"        data-speed="0.5" id="spdHalf">0.5×</button>
+          <!-- Volume -->
+          <div class="vol-wrap">
+            <button class="ctrl-btn sm" id="muteBtn" title="Mute">
+              <svg id="volIcon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3L6 7H3v6h3l4 4V3zM13 7a5 5 0 010 6M15.5 5a8 8 0 010 10"/></svg>
+              <svg id="muteIcon" viewBox="0 0 20 20" fill="currentColor" style="display:none"><path d="M10 3L6 7H3v6h3l4 4V3zM13 10l2-2m0 4l-2-2"/></svg>
+            </button>
+            <input type="range" class="vol-slider" id="volSlider" min="0" max="1" step="0.05" value="1">
+          </div>
+          <!-- Fullscreen -->
+          <button class="ctrl-btn sm" id="fullscreenBtn" title="Fullscreen">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 3h5v2H5v3H3V3zm9 0h5v5h-2V5h-3V3zM3 12h2v3h3v2H3v-5zm12 3h-3v2h5v-5h-2v3z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drag handle: resize the video panel -->
+    <div class="video-resize-handle" id="videoResizeHandle" title="Drag to resize video"></div>
+
+    <!-- Info bar -->
+    <div class="video-info-bar">
+      <div class="time-code" id="timeCode">–:––:––.–––</div>
+      <div class="active-cue-badge" id="activeCueBadge">cue #0</div>
+      <div style="flex:1"></div>
+      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace" id="cueCountLabel">0 cues</div>
+    </div>
+
+    <!-- Timeline header -->
+    <div class="timeline-header">
+      <input type="text" class="timeline-search" id="searchInput" placeholder="Search cues...">
+      <button class="tl-action-btn" id="addCueBtn">+ Add cue</button>
+      <button class="tl-action-btn" id="sortBtn">Sort</button>
+    </div>
+
+    <!-- Timeline list -->
+    <div class="timeline" id="timeline">
+      <div class="timeline-empty" id="tlEmpty">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" opacity="0.3">
+          <rect x="4" y="8" width="24" height="4" rx="2" fill="white"/>
+          <rect x="4" y="16" width="18" height="4" rx="2" fill="white"/>
+          <rect x="4" y="24" width="21" height="4" rx="2" fill="white"/>
+        </svg>
+        Load an SRT, VTT, or Word file to begin
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Edit panel ── -->
+  <div class="edit-panel" id="editPanel">
+    <!-- Stats always present so IDs are always in DOM -->
+    <div class="ep-section" id="epEditorSection">
+      <div class="section-label" id="epCueLabel">Cue editor</div>
+      <div id="epEmpty" class="ep-placeholder">Select a cue to edit</div>
+      <div id="epFields" style="display:none">
+        <div class="field-label">Start time</div>
+        <input class="field-input" id="editStart" placeholder="00:00:00,000" spellcheck="false">
+        <div class="field-label">End time</div>
+        <input class="field-input" id="editEnd"   placeholder="00:00:00,000" spellcheck="false">
+        <div class="field-label">Subtitle text</div>
+        <textarea class="field-textarea" id="editText" rows="3" placeholder="Subtitle text..."></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="save-cue-btn" id="saveCueBtn" style="flex:1">Save  ↵</button>
+          <button class="save-cue-btn" id="prevCueBtn" style="flex:0;padding:8px 10px;background:var(--surface2);color:var(--muted);border:1px solid var(--border)">↑</button>
+          <button class="save-cue-btn" id="nextCueBtn" style="flex:0;padding:8px 10px;background:var(--surface2);color:var(--muted);border:1px solid var(--border)">↓</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center;line-height:1.5">
+          ↑↓ keys to navigate · Ctrl+Enter to save
+        </div>
+      </div>
+    </div>
+    <div class="ep-section" id="epNudgeSection" style="display:none">
+      <div class="section-label">Nudge timing</div>
+      <div class="cue-nudge-grid">
+        <button class="cue-nudge-btn" id="cn-1s">← −1s</button>
+        <button class="cue-nudge-btn" id="cn+1s">+1s →</button>
+        <button class="cue-nudge-btn" id="cn-.1">← −0.1s</button>
+        <button class="cue-nudge-btn" id="cn+.1">+0.1s →</button>
+        <button class="cue-nudge-btn" id="cn-ext">Extend +0.5s</button>
+        <button class="cue-nudge-btn" id="cn-shr">Shrink −0.2s</button>
+      </div>
+      <button class="cue-nudge-btn" id="splitCueBtn"  style="width:100%;margin-top:5px">Split cue at midpoint</button>
+      <button class="cue-nudge-btn" id="mergeNextBtn" style="width:100%;margin-top:4px">Merge with next</button>
+      <button class="cue-nudge-btn" id="deleteCueBtn" style="width:100%;margin-top:4px;border-color:rgba(255,95,95,0.3);color:rgba(255,95,95,0.7)">Delete this cue</button>
+    </div>
+    <div class="ep-section">
+      <div class="section-label">File stats</div>
+      <div class="stats-grid">
+        <div class="stat-row"><span class="stat-key">Cues</span><span class="stat-val" id="statCues">—</span></div>
+        <div class="stat-row"><span class="stat-key">Duration</span><span class="stat-val" id="statDur">—</span></div>
+        <div class="stat-row"><span class="stat-key">Format</span><span class="stat-val" id="statFmt">—</span></div>
+        <div class="stat-row"><span class="stat-key">Total offset</span><span class="stat-val" id="statOffset">0.000s</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

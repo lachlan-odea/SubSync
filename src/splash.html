@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SubSync — Loading</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #16161d;
+    --border: rgba(255,255,255,0.07);
+    --accent: #EAFC88;
+    --text: #e8e8f0;
+    --muted: rgba(232,232,240,0.45);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    -webkit-app-region: drag;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  .container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+  }
+
+  .logo-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .anchor-icon {
+    width: 64px;
+    height: 64px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.1s forwards;
+  }
+
+  .logo-text {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.25s forwards;
+  }
+
+  .logo-text span { color: var(--accent); }
+
+  .tagline {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.05em;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.4s forwards;
+  }
+
+  .progress-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.55s forwards;
+  }
+
+  .progress-track {
+    width: 220px;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 1px;
+    width: 0%;
+    animation: load 8s ease-in-out forwards;
+  }
+
+  .status-text {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes load {
+    0%   { width: 0%; }
+    20%  { width: 15%; }
+    50%  { width: 45%; }
+    80%  { width: 75%; }
+    100% { width: 92%; }
+  }
+
+  .dots::after {
+    content: '';
+    animation: dots 1.5s steps(4, end) infinite;
+  }
+  @keyframes dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+    100% { content: ''; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo-wrap">
+    <svg class="anchor-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="14" r="5" stroke="#EAFC88" stroke-width="2.5"/>
+      <line x1="32" y1="19" x2="32" y2="52" stroke="#EAFC88" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M18 30 Q10 30 10 40 Q10 52 22 52" stroke="#EAFC88" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M46 30 Q54 30 54 40 Q54 52 42 52" stroke="#EAFC88" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <line x1="18" y1="30" x2="46" y2="30" stroke="#EAFC88" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+    <div class="logo-text">Sub<span>Sync</span></div>
+    <div class="tagline">powered by anchor-sub-sync + whisper</div>
+  </div>
+  <div class="progress-area">
+    <div class="progress-track">
+      <div class="progress-bar"></div>
+    </div>
+    <div class="status-text" id="statusMsg">Starting AI engine<span class="dots"></span></div>
+  </div>
+</div>
+</body>
+</html>

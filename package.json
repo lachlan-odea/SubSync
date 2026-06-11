@@ -1,0 +1,73 @@
+{
+  "name": "subsync",
+  "version": "1.0.2",
+  "description": "Subtitle sync tool powered by anchor-sub-sync and Whisper",
+  "main": "main.js",
+  "author": "WiseTech eLearning Team",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win",
+    "setup-python": "python -m venv python/venv && python/venv/Scripts/pip install -r python/requirements.txt"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.wisetech.subsync",
+    "productName": "SubSync",
+    "copyright": "WiseTech eLearning Team",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "python-bundle",
+        "to": "python-bundle",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico",
+      "signingHashAlgorithms": [],
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SubSync",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "license": "resources/LICENSE.txt",
+      "differentialPackage": false
+    },
+    "forceCodeSigning": false,
+    "afterSign": null
+  }
+}

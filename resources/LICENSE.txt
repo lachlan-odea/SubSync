@@ -1,0 +1,20 @@
+Free Use License
+
+Copyright (c) 2026 WiseTech Global
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software") to use the Software solely for its intended purpose.
+
+Except as expressly permitted above, no person may:
+
+- Copy the Software;
+- Modify, adapt, translate, or create derivative works of the Software;
+- Merge the Software with other software;
+- Publish the Software;
+- Distribute or redistribute the Software;
+- Sublicense the Software;
+- Sell, rent, lease, or otherwise commercialize the Software; or
+- Permit any third party to perform any of the foregoing activities.
+
+The Software is licensed, not sold. All rights not expressly granted under this License are reserved by WiseTech Global.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF THE SOFTWARE.
