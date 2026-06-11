@@ -73,7 +73,7 @@
       "installerHeaderIcon": "resources/icon.ico",
       "deleteAppDataOnUninstall": false,
       "license": "resources/LICENSE.txt",
-      "differentialPackage": false
+      "differentialPackage": true
     },
     "forceCodeSigning": false,
     "afterSign": null
