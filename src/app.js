@@ -18,11 +18,15 @@ let pollTimer   = null;
 let searchQuery = '';
 let isDirty     = false;
 
-// ── Update check (GitHub Releases) ───────────────────────────────────────────
-// Set to 'owner/repo' of the public GitHub repo whose Releases hold the latest
-// installer. Leave empty to disable the check entirely.
-const UPDATE_REPO = 'lachlan-odea/SubSync';
-let updateInfo = null;   // { version, url, notes } when a newer release exists
+// ── Auto-update state (driven by electron-updater in the main process) ───────
+// status: idle | checking | none | downloading | downloaded | error
+let updateState = { status: 'idle', version: null, percent: 0, message: '' };
+let repaintAbout = null;   // set to the About dialog's update-section painter while open
+
+function setUpdateState(patch) {
+  updateState = { ...updateState, ...patch };
+  if (repaintAbout) repaintAbout();
+}
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -32,7 +36,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   bindVideoControls();
   bindVideoResize();
   updateStats();
-  checkForUpdate();   // non-blocking; failures are silent
+  bindUpdateEvents();
+  window.electronAPI.update.check();   // background check on startup
 });
 
 // ── Video panel resize ─────────────────────────────────────────────────────
@@ -812,51 +817,24 @@ function setProgress(pct, label) {
   document.getElementById('progLabel').textContent = label;
 }
 
-// ── Update check (GitHub Releases) ───────────────────────────────────────────
-// Returns true if `remote` is a strictly higher version than `local`.
-function isNewerVersion(remote, local) {
-  const parse = v => String(v).trim().replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
-  const a = parse(remote), b = parse(local);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if ((a[i] || 0) > (b[i] || 0)) return true;
-    if ((a[i] || 0) < (b[i] || 0)) return false;
-  }
-  return false;
-}
-
-// Checks GitHub Releases for a newer version. Returns one of:
-//   'disabled' | 'update' | 'current' | 'error'
-// `notify` shows a toast when an update is found (used by the silent startup check;
-// the manual check in the About dialog passes notify:false and shows inline feedback).
-async function checkForUpdate({ notify = true } = {}) {
-  if (!UPDATE_REPO) return 'disabled';
-  try {
-    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
-      headers: { 'Accept': 'application/vnd.github+json' },
-    });
-    if (!res.ok) return 'error';
-    const rel = await res.json();
-    const latest = rel.tag_name || rel.name;
-    if (!latest) return 'error';
-
-    const current = await window.electronAPI.getAppVersion();
-    if (!isNewerVersion(latest, current)) return 'current';
-
-    // Prefer a Windows installer asset; fall back to the release page.
-    const asset = (rel.assets || []).find(a => /\.exe$/i.test(a.name || ''));
-    updateInfo = {
-      version: String(latest).replace(/^v/i, ''),
-      url: asset ? asset.browser_download_url : rel.html_url,
-      notes: rel.body || '',
-    };
-
+// ── Auto-update (electron-updater) ───────────────────────────────────────────
+// The main process downloads updates in the background (differential via blockmap)
+// and emits status events; we reflect them in toasts + the About dialog.
+function bindUpdateEvents() {
+  const u = window.electronAPI.update;
+  u.onChecking(()  => setUpdateState({ status: 'checking', message: '' }));
+  u.onAvailable(d  => {
+    setUpdateState({ status: 'downloading', version: d.version, percent: 0 });
+    showToast(`Downloading update v${d.version}…`);
+  });
+  u.onProgress(d   => setUpdateState({ status: 'downloading', percent: Math.round(d.percent || 0) }));
+  u.onNone(()      => setUpdateState({ status: 'none' }));
+  u.onDownloaded(d => {
+    setUpdateState({ status: 'downloaded', version: d.version });
     document.getElementById('aboutBtn')?.classList.add('has-update');
-    if (notify) showToast(`Update available: v${updateInfo.version} — see About (ⓘ)`, 'success');
-    return 'update';
-  } catch (e) {
-    // Network/parse failure — never disrupt the app.
-    return 'error';
-  }
+    showToast(`Update v${d.version} ready — open About (ⓘ) to restart`, 'success');
+  });
+  u.onError(d      => setUpdateState({ status: 'error', message: d?.message || 'Update error' }));
 }
 
 // ── About modal ─────────────────────────────────────────────────────────────
@@ -878,42 +856,55 @@ async function showAboutModal() {
     </div>`;
   document.body.appendChild(overlay);
 
-  const close = () => overlay.remove();
+  const close = () => { repaintAbout = null; overlay.remove(); };
   overlay.querySelector('#aboutClose').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', function esc(e) {
     if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
   });
 
-  // Renders the update section based on current state, and (re)wires its buttons.
+  // Renders the update section from updateState; re-invoked live as events arrive.
   const section = overlay.querySelector('#aboutUpdate');
-  const btnBase = "padding:8px 18px;border-radius:8px;font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;";
-  function paintUpdate(statusMsg = '') {
-    if (updateInfo) {
+  const btnBase   = "padding:8px 18px;border-radius:8px;font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;";
+  const accentBtn = btnBase + "background:#EAFC88;border:none;color:#141400";
+  const ghostBtn  = btnBase + "background:transparent;border:1px solid rgba(255,255,255,0.15);color:rgba(232,232,240,0.7);font-weight:600";
+
+  function paintUpdate() {
+    const s = updateState;
+    if (s.status === 'downloaded') {
       section.innerHTML = `
         <div style="background:var(--accent-dim);border:1px solid rgba(234,252,136,0.3);border-radius:8px;padding:12px 14px">
-          <div style="font-size:13px;font-weight:600;color:#EAFC88;margin-bottom:8px">Update available — v${updateInfo.version}</div>
-          <button id="aboutDownload" style="${btnBase}background:#EAFC88;border:none;color:#141400">Download v${updateInfo.version}</button>
+          <div style="font-size:13px;font-weight:600;color:#EAFC88;margin-bottom:10px">Update ready — v${s.version}</div>
+          <div style="display:flex;gap:8px;justify-content:center">
+            <button id="aboutRestart" style="${accentBtn}">Restart now</button>
+            <button id="aboutLater" style="${ghostBtn}">Later</button>
+          </div>
         </div>`;
-      section.querySelector('#aboutDownload').onclick = () => {
-        if (updateInfo?.url) window.electronAPI.openExternal(updateInfo.url);
-      };
-    } else {
+      section.querySelector('#aboutRestart').onclick = () => window.electronAPI.update.install();
+      section.querySelector('#aboutLater').onclick   = close;
+    } else if (s.status === 'downloading') {
+      const pct = s.percent || 0;
       section.innerHTML = `
-        <button id="aboutCheck" style="${btnBase}background:transparent;border:1px solid rgba(255,255,255,0.15);color:rgba(232,232,240,0.7);font-weight:600">Check for updates</button>
-        <div id="aboutCheckStatus" style="font-size:11px;color:rgba(232,232,240,0.45);margin-top:8px;min-height:14px">${statusMsg}</div>`;
-      section.querySelector('#aboutCheck').onclick = async () => {
-        const btn = section.querySelector('#aboutCheck');
-        const status = section.querySelector('#aboutCheckStatus');
-        btn.disabled = true; btn.style.opacity = '0.5'; status.textContent = 'Checking…';
-        const result = await checkForUpdate({ notify: false });
-        if (result === 'update')        paintUpdate();   // updateInfo now set → shows banner
-        else if (result === 'current')  paintUpdate(`You're on the latest version (v${version}).`);
-        else if (result === 'disabled') paintUpdate('Update checking is not configured.');
-        else                            paintUpdate("Couldn't reach the update server. Try again later.");
+        <div style="font-size:12px;color:rgba(232,232,240,0.6);margin-bottom:8px">Downloading update${s.version ? ` v${s.version}` : ''}… ${pct}%</div>
+        <div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:#EAFC88;transition:width 0.3s"></div>
+        </div>`;
+    } else if (s.status === 'checking') {
+      section.innerHTML = `<div style="font-size:12px;color:rgba(232,232,240,0.5)">Checking for updates…</div>`;
+    } else {
+      const msg = s.status === 'none'  ? "You're on the latest version."
+                : s.status === 'error' ? (s.message || "Couldn't check for updates.")
+                : '';
+      section.innerHTML = `
+        <button id="aboutCheck" style="${ghostBtn}">Check for updates</button>
+        <div style="font-size:11px;color:rgba(232,232,240,0.45);margin-top:8px;min-height:14px">${msg}</div>`;
+      section.querySelector('#aboutCheck').onclick = () => {
+        setUpdateState({ status: 'checking' });
+        window.electronAPI.update.check();
       };
     }
   }
+  repaintAbout = paintUpdate;
   paintUpdate();
 }
 

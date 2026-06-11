@@ -11,4 +11,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getTempPath: (ext) => ipcRenderer.invoke('get-temp-path', ext),
+
+  update: {
+    check:   () => ipcRenderer.invoke('update:check'),
+    install: () => ipcRenderer.invoke('update:install'),
+    onChecking:   (cb) => ipcRenderer.on('update:checking',  () => cb()),
+    onAvailable:  (cb) => ipcRenderer.on('update:available',  (_, d) => cb(d)),
+    onNone:       (cb) => ipcRenderer.on('update:none',       () => cb()),
+    onProgress:   (cb) => ipcRenderer.on('update:progress',   (_, d) => cb(d)),
+    onDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, d) => cb(d)),
+    onError:      (cb) => ipcRenderer.on('update:error',      (_, d) => cb(d)),
+  },
 });

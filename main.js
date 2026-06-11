@@ -4,6 +4,7 @@ const os = require('os');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let pythonProcess = null;
@@ -272,6 +273,40 @@ ipcMain.handle('get-temp-path', (_, ext) => {
 
 ipcMain.handle('delete-file', (_, filePath) => {
   try { fs.unlinkSync(filePath); return true; } catch (_) { return false; }
+});
+
+// ── Auto-update (electron-updater + GitHub Releases) ────────────────────
+// Downloads new versions in the background (differential via .blockmap) and
+// installs on quit or on explicit "Restart now". The feed is derived from the
+// `publish` config baked into app-update.yml at build time.
+autoUpdater.autoDownload = true;            // fetch the update silently when found
+autoUpdater.autoInstallOnAppQuit = true;    // apply it next launch if not restarted sooner
+
+function sendUpdate(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
+autoUpdater.on('checking-for-update', () => sendUpdate('update:checking'));
+autoUpdater.on('update-available',    (info) => sendUpdate('update:available', { version: info.version }));
+autoUpdater.on('update-not-available',()     => sendUpdate('update:none'));
+autoUpdater.on('download-progress',   (p)    => sendUpdate('update:progress', { percent: p.percent }));
+autoUpdater.on('update-downloaded',   (info) => sendUpdate('update:downloaded', { version: info.version }));
+autoUpdater.on('error',               (err)  => sendUpdate('update:error', { message: String(err && err.message || err) }));
+
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) {
+    sendUpdate('update:error', { message: 'Update checks run only in the installed app.' });
+    return;
+  }
+  try { await autoUpdater.checkForUpdates(); } catch (e) { /* error event already sent */ }
+});
+
+ipcMain.handle('update:install', () => {
+  // isSilent=true: apply the update without re-showing the installer wizard;
+  // isForceRunAfter=true: relaunch SubSync once the update is applied.
+  autoUpdater.quitAndInstall(true, true);
 });
 
 // ── App lifecycle ──────────────────────────────────────────────────────
