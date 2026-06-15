@@ -159,6 +159,7 @@ function startPythonBackend() {
     SUBSYNC_PORT: String(BACKEND_PORT),
     FFMPEG_PATH: ffmpegExe,
     PYTHONUNBUFFERED: '1',
+    PYTHONIOENCODING: 'utf-8',
     ...(bundlePythonPath ? { PYTHONPATH: bundlePythonPath } : {}),
     PYTHONNOUSERSITE: app.isPackaged ? '1' : '0',
   };

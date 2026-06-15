@@ -14,6 +14,14 @@ from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
+# Force UTF-8 stdio so non-Latin text in piped child output / logs doesn't
+# crash on Windows (default cp1252 console encoding).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 app = Flask(__name__)
 CORS(app)
 
@@ -118,6 +126,7 @@ def build_env():
     ffmpeg_dir = str(Path(_FFMPEG_EXE).parent)
     env['PATH'] = ffmpeg_dir + os.pathsep + env.get('PATH', '')
     env['PYTHONUNBUFFERED'] = '1'
+    env['PYTHONIOENCODING'] = 'utf-8'
     return env
 
 
@@ -196,6 +205,8 @@ def _run_sync(video_path, subtitle_path, output_path, model, job_id):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             env=build_env(),
             cwd=str(_HERE),         # always run from the python/ directory
         )
@@ -341,7 +352,7 @@ def _run_docx_sync(video_path, docx_path, output_path, model, max_words, min_wor
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, env=build_env(),
+            text=True, encoding='utf-8', errors='replace', env=build_env(),
             cwd=str(_HERE),
         )
         lines = []

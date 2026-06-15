@@ -21,6 +21,14 @@ import tempfile
 import subprocess
 from pathlib import Path
 
+# Force UTF-8 stdio so non-Latin subtitle text (e.g. Japanese) doesn't crash
+# diagnostic prints on Windows, where stdout defaults to cp1252.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 
 # ── SRT helpers ────────────────────────────────────────────────────────────
 
