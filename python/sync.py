@@ -189,14 +189,13 @@ def extract_audio(video_path, ffmpeg_exe='ffmpeg'):
 
 # ── Alignment ──────────────────────────────────────────────────────────────
 
-def align_cues(original_cues, whisper_segments):
-    """
-    Align cues (from SRT or docx) to Whisper word-level timestamps.
-    """
-    if not original_cues or not whisper_segments:
-        return original_cues
+# Hiragana, katakana, CJK ideographs, Hangul, half-width kana — scripts that
+# are not space-delimited, so word-based matching does not work for them.
+_CJK_RE = re.compile(r'[぀-ヿ㐀-䶿一-鿿가-힣豈-﫿ｦ-ﾟ]')
 
-    # Build flat word list from Whisper segments
+
+def _flatten_words(whisper_segments):
+    """Flatten Whisper segments into a list of {word,start,end} tokens."""
     w_words = []
     for seg in whisper_segments:
         seg_words = seg.get('words', [])
@@ -216,68 +215,157 @@ def align_cues(original_cues, whisper_segments):
                     'start': seg['start'] + j * dur,
                     'end':   seg['start'] + (j + 1) * dur,
                 })
+    return w_words
 
+
+def _looks_cjk(original_cues, w_words):
+    sample = ''.join(c.get('text', '') for c in original_cues[:30])
+    if _CJK_RE.search(sample):
+        return True
+    return bool(_CJK_RE.search(''.join(w.get('word', '') for w in w_words[:120])))
+
+
+def _char_seq(text):
+    """Normalised character sequence — letters/digits/CJK, no spaces or punctuation."""
+    return [c.lower() for c in text if c.isalnum()]
+
+
+def _char_tokens(w_words):
+    """Expand each Whisper word into per-character tokens with interpolated timing."""
+    toks = []
+    for w in w_words:
+        s, e = w['start'], w['end']
+        cs = [c.lower() for c in w.get('word', '') if c.isalnum()]
+        if not cs:
+            continue
+        dur = (e - s) / len(cs)
+        for k, c in enumerate(cs):
+            toks.append({'norm': c, 'start': s + k * dur, 'end': s + (k + 1) * dur})
+    return toks
+
+
+def _overlap(q_set, chunk):
+    if not q_set or not chunk:
+        return 0.0
+    b = set(chunk)
+    return len(q_set & b) / max(len(q_set), len(b))
+
+
+def align_cues(original_cues, whisper_segments):
+    """
+    Align cues (from SRT or docx) to Whisper timestamps.
+
+    Uses word-level matching for space-delimited languages and character-level
+    matching for CJK scripts (Japanese/Chinese/Korean), which have no word
+    spaces and which Whisper tokenises per character.
+    """
+    if not original_cues or not whisper_segments:
+        return original_cues
+
+    w_words = _flatten_words(whisper_segments)
     if not w_words:
         return proportional_fallback(original_cues, whisper_segments)
 
-    print(f'[sync] Aligning {len(original_cues)} cues against {len(w_words)} Whisper words', flush=True)
+    cjk = _looks_cjk(original_cues, w_words)
 
-    aligned      = []
+    if cjk:
+        tokens     = _char_tokens(w_words)
+        cue_tokens = [_char_seq(c.get('text', '')) for c in original_cues]
+        window     = 600
+        threshold  = 0.34
+    else:
+        tokens     = [{'norm': normalise(w['word']), 'start': w['start'], 'end': w['end']} for w in w_words]
+        cue_tokens = [normalise(c.get('text', '')).split() for c in original_cues]
+        window     = 300
+        threshold  = 0.30
+
+    if not tokens:
+        return proportional_fallback(original_cues, whisper_segments)
+
+    tnorm = [t['norm'] for t in tokens]
+    print(f'[sync] Aligning {len(original_cues)} cues against {len(tokens)} '
+          f'{"chars" if cjk else "words"} ({"CJK" if cjk else "latin"} mode)', flush=True)
+
+    aligned      = [dict(c) for c in original_cues]
+    matched      = [False] * len(original_cues)
     search_start = 0
 
-    for cue in original_cues:
-        query   = normalise(cue['text'])
-        q_words = query.split()
-        n       = len(q_words)
-
-        if not q_words:
-            aligned.append(cue)
+    for idx, q in enumerate(cue_tokens):
+        n = len(q)
+        if n == 0:
             continue
-
+        q_set      = set(q)
         best_score = -1
         best_i = best_j = None
-        window_end = min(len(w_words), search_start + 300)
+        window_end = min(len(tokens), search_start + window)
 
         for i in range(search_start, max(search_start + 1, window_end - n + 1)):
-            chunk = [normalise(w_words[k]['word']) for k in range(i, min(i + n, len(w_words)))]
-            score = similarity(q_words, chunk)
+            score = _overlap(q_set, tnorm[i:i + n])
             if score > best_score:
                 best_score = score
                 best_i     = i
-                best_j     = min(i + n - 1, len(w_words) - 1)
+                best_j     = min(i + n - 1, len(tokens) - 1)
 
-        if best_score >= 0.30 and best_i is not None:
-            new_start = w_words[best_i]['start']
-            new_end   = w_words[best_j]['end']
-            new_end   = max(new_end, new_start + 0.4)
-            aligned.append({**cue, 'start': new_start, 'end': new_end})
-            search_start = max(0, best_i)
+        if best_score >= threshold and best_i is not None:
+            aligned[idx]['start'] = tokens[best_i]['start']
+            aligned[idx]['end']   = max(tokens[best_j]['end'], tokens[best_i]['start'] + 0.4)
+            matched[idx]          = True
+            search_start          = best_i
         else:
-            print(f'[sync] Weak match for: {cue["text"][:40]!r} (score={best_score:.2f})', flush=True)
-            aligned.append(cue)
+            print(f'[sync] Weak match for: {original_cues[idx]["text"][:40]!r} (score={best_score:.2f})', flush=True)
+
+    _interpolate_unmatched(aligned, matched, tokens)
 
     # Add a small gap between adjacent cues to avoid overlap
     for i in range(len(aligned) - 1):
         if aligned[i]['end'] > aligned[i + 1]['start']:
             mid = (aligned[i]['end'] + aligned[i + 1]['start']) / 2
-            aligned[i]['end']         = mid - 0.05
-            aligned[i + 1]['start']   = mid + 0.05
+            aligned[i]['end']       = mid - 0.05
+            aligned[i + 1]['start'] = mid + 0.05
 
     return aligned
+
+
+def _interpolate_unmatched(aligned, matched, tokens):
+    """
+    Give unmatched cues plausible timings instead of leaving them at their
+    (often zero) originals: spread each run of misses between the surrounding
+    matched cues — or evenly across the audio if nothing matched at all.
+    """
+    n = len(aligned)
+    a0, a1 = tokens[0]['start'], tokens[-1]['end']
+
+    if not any(matched):
+        span = max(0.5, a1 - a0)
+        for i in range(n):
+            aligned[i]['start'] = a0 + span * i / n
+            aligned[i]['end']   = a0 + span * (i + 1) / n
+        return
+
+    i = 0
+    while i < n:
+        if matched[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and not matched[j]:
+            j += 1
+        left_t  = aligned[i - 1]['end'] if i > 0 else a0
+        right_t = aligned[j]['start']   if j < n else a1
+        if right_t < left_t:
+            right_t = left_t
+        step = (right_t - left_t) / (j - i + 1)
+        for k in range(j - i):
+            s = left_t + step * (k + 1)
+            aligned[i + k]['start'] = s
+            aligned[i + k]['end']   = s + max(0.4, step * 0.8)
+        i = j
 
 
 def normalise(text):
     text = text.lower()
     text = re.sub(r"[^\w\s']", ' ', text)
     return re.sub(r'\s+', ' ', text).strip()
-
-
-def similarity(a_words, b_words):
-    if not a_words or not b_words:
-        return 0.0
-    a_set = set(a_words)
-    b_set = set(b_words)
-    return len(a_set & b_set) / max(len(a_set), len(b_set))
 
 
 def proportional_fallback(original_cues, whisper_segments):
