@@ -7,3 +7,5 @@ python/venv/
 .DS_Store
 Thumbs.db
 .claude/
+__pycache__/
+*.pyc
