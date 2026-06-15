@@ -116,6 +116,21 @@ def docx_to_cues(docx_path, max_words=8, min_words=3):
 
     print(f'[sync] Extracted {len(raw_paragraphs)} paragraphs from docx', flush=True)
 
+    # CJK languages have no word spaces — size cues by characters instead.
+    if any(_CJK_RE.search(p) for p in raw_paragraphs):
+        cues = []
+        for para in raw_paragraphs:
+            for chunk in _split_text_cjk(para, max_chars=max_words):
+                cues.append({'text': chunk, 'start': 0.0, 'end': 1.0})
+        merged = []
+        for cue in cues:
+            if merged and len(cue['text']) < min_words:
+                merged[-1]['text'] += cue['text']
+            else:
+                merged.append(cue)
+        print(f'[sync] Split into {len(merged)} subtitle cues (CJK, max {max_words} chars/cue)', flush=True)
+        return merged
+
     # Split paragraphs into subtitle-sized chunks
     cues = []
     pending = ''
@@ -165,6 +180,49 @@ def chunk_words(text, max_words):
     for i in range(0, len(words), max_words):
         chunks.append(' '.join(words[i:i + max_words]))
     return chunks
+
+
+def _split_sentences_cjk(text):
+    """Split CJK text into sentences, keeping the terminal punctuation."""
+    parts = re.split(r'(?<=[。．！？!?])', text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _split_text_cjk(text, max_chars):
+    """
+    Break CJK text into subtitle-sized pieces (<= ~max_chars characters) on
+    sentence (。！？) then clause (、，) boundaries, hard-wrapping anything that
+    is still too long. Japanese/Chinese have no spaces, so word splitting can't
+    be used to size cues.
+    """
+    pieces = []
+    for sent in (_split_sentences_cjk(text) or [text]):
+        if len(sent) <= max_chars:
+            pieces.append(sent)
+            continue
+        buf = ''
+        for clause in re.split(r'(?<=[、，,])', sent):
+            if len(buf) + len(clause) <= max_chars:
+                buf += clause
+            else:
+                if buf:
+                    pieces.append(buf)
+                    buf = ''
+                if len(clause) <= max_chars:
+                    buf = clause
+                else:
+                    for i in range(0, len(clause), max_chars):
+                        pieces.append(clause[i:i + max_chars])
+        if buf:
+            pieces.append(buf)
+    # Merge adjacent tiny pieces so we don't emit 1-2 character cues.
+    merged = []
+    for p in pieces:
+        if merged and len(merged[-1]) + len(p) <= max_chars:
+            merged[-1] += p
+        else:
+            merged.append(p)
+    return [m for m in merged if m] or [text]
 
 
 # ── Audio extraction ───────────────────────────────────────────────────────
